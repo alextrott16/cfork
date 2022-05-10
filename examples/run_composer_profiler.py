@@ -1,4 +1,5 @@
-# Copyright 2022 MosaicML. All Rights Reserved.
+# Copyright 2022 MosaicML Composer authors
+# SPDX-License-Identifier: Apache-2.0
 
 """Entrypoint that performs a profiling run on the provided yahp hparams file This example is interchangable with
 run_composer_trainer.py."""
