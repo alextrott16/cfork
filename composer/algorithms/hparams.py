@@ -330,6 +330,10 @@ class SeqLengthWarmupHparams(AlgorithmHparams):
     max_seq_length: int = hp.optional("End sequence length", default=1024)
     step_size: int = hp.optional("Sequence length step size", default=8)
     truncate: bool = hp.optional("Truncate tensors or reshape extra tokens to new examples.", default=True)
+    preserve_eos: bool = hp.optional('"Preserve the end-of-sequence of the batch when'
+            ' truncating. Useful when input formats include a unique end-of-sequence token.'
+            ' Ignored if ``truncate`` is ``False``."', 
+            default=False)
 
     def initialize_object(self) -> "SeqLengthWarmup":
         return SeqLengthWarmup(**asdict(self))
