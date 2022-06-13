@@ -8,7 +8,8 @@ examples for writing your own callbacks at the :class:`~composer.core.callback.C
 """
 from composer.callbacks.callback_hparams import (CallbackHparams, CheckpointSaverHparams, EarlyStopperHparams,
                                                  GradMonitorHparams, LRMonitorHparams, MemoryMonitorHparams,
-                                                 MLPerfCallbackHparams, SpeedMonitorHparams, ThresholdStopperHparams)
+                                                 MLPerfCallbackHparams, SpeedMonitorHparams, ThresholdStopperHparams,
+                                                 BERTPrinterHParams)
 from composer.callbacks.checkpoint_saver import CheckpointSaver
 from composer.callbacks.early_stopper import EarlyStopper
 from composer.callbacks.grad_monitor import GradMonitor
@@ -17,6 +18,7 @@ from composer.callbacks.memory_monitor import MemoryMonitor
 from composer.callbacks.mlperf import MLPerfCallback
 from composer.callbacks.speed_monitor import SpeedMonitor
 from composer.callbacks.threshold_stopper import ThresholdStopper
+from composer.callbacks.bert_printer import BERTPrinter
 
 __all__ = [
     "GradMonitor",
@@ -27,6 +29,7 @@ __all__ = [
     "MLPerfCallback",
     "EarlyStopper",
     "ThresholdStopper",
+    "BERTPrinter",
     # hparams objects
     "CallbackHparams",
     "CheckpointSaverHparams",
@@ -38,4 +41,5 @@ __all__ = [
     "MLPerfCallbackHparams",
     "EarlyStopperHparams",
     "ThresholdStopperHparams",
+    "BERTPrinterHparams",
 ]

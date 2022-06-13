@@ -21,7 +21,7 @@ import composer
 from composer.algorithms import AlgorithmHparams, get_algorithm_registry
 from composer.callbacks import (CallbackHparams, EarlyStopperHparams, GradMonitorHparams, LRMonitorHparams,
                                 MemoryMonitorHparams, MLPerfCallbackHparams, SpeedMonitorHparams,
-                                ThresholdStopperHparams)
+                                ThresholdStopperHparams, BERTPrinterHParams)
 from composer.core import DataSpec, Evaluator, Event, Precision, State, Time
 from composer.core.types import JSON, PyTorchScheduler
 from composer.datasets import DataLoaderHparams, DatasetHparams
@@ -110,6 +110,7 @@ callback_registry = {
     "mlperf": MLPerfCallbackHparams,
     "early_stopper": EarlyStopperHparams,
     "threshold_stopper": ThresholdStopperHparams,
+    "bert_printer": BERTPrinterHParams,
 }
 
 device_registry = {

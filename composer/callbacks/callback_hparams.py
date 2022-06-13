@@ -19,6 +19,7 @@ from composer.callbacks.memory_monitor import MemoryMonitor
 from composer.callbacks.mlperf import MLPerfCallback
 from composer.callbacks.speed_monitor import SpeedMonitor
 from composer.callbacks.threshold_stopper import ThresholdStopper
+from composer.callbacks.bert_printer import BERTPrinter
 from composer.core.callback import Callback
 from composer.core.time import Time
 from composer.utils import import_object
@@ -30,6 +31,7 @@ __all__ = [
     "LRMonitorHparams",
     "SpeedMonitorHparams",
     "CheckpointSaverHparams",
+    "BERTPrinterHparams",
 ]
 
 
@@ -45,6 +47,38 @@ class CallbackHparams(hp.Hparams, abc.ABC):
             Callback: An instance of the callback.
         """
         pass
+
+
+@dataclass
+class BERTPrinterHParams(CallbackHparams):
+    """:class:`~.BERTPrinter` hyperparamters.
+
+    Args:
+        tokenizer_name (str):
+            See :class:`~.BERTPrinter` for documentation.
+        print_interval_in_batches (int, optional):
+            See :class:`~.BERTPrinter` for documentation.
+            Default: 100.
+    """
+
+    tokenizer_name: str = hp.required(
+        doc="Name of the tokenizer used in the dataloader.",
+    )
+    print_interval_in_batches: int = hp.optional(
+        doc="Number of batches between printouts.",
+        default=100,
+    )
+
+    def initialize_object(self) -> BERTPrinter:
+        """Initialize the BERTPrinter callback.
+
+        Returns:
+            BERTPrinter: An instance of :class:`~.BERTPrinter`.
+        """
+        return BERTPrinter(
+            tokenizer_name=self.tokenizer_name,
+            print_interval_in_batches=self.print_interval_in_batches,
+        )
 
 
 @dataclass
