@@ -52,8 +52,18 @@ def training_loop(model, train_loader):
 
 ### Composer Trainer
 
-<!-- TODO: Address timeouts -->
-<!--pytest-codeblocks:skip-->
+<!--pytest.mark.gpu-->
+<!--pytest.mark.timeout(15)-->
+<!--
+```python
+from tests.fixtures.synthetic_hf_state import make_dataset_configs, synthetic_hf_state_maker
+
+synthetic_config = make_dataset_configs(model_family=['gpt2'])[0]
+_, model, train_dataloader = synthetic_hf_state_maker(synthetic_config)
+_, _, eval_dataloader = synthetic_hf_state_maker(synthetic_config)
+```
+-->
+<!--pytest-codeblocks:cont-->
 ```python
 # Instantiate the algorithm and pass it into the Trainer
 # The trainer will automatically run it at the appropriate points in the training loop
@@ -66,12 +76,13 @@ alibi = Alibi(
     attention_module_name="transformers.models.gpt2.modeling_gpt2.GPT2Attention",
     attr_to_replace="_attn",
     alibi_attention="composer.algorithms.alibi._gpt2_alibi._attn",
-    mask_replacement_function="composer.algorithms.alibi.gpt2_alibi.enlarge_mask"
+    mask_replacement_function="composer.algorithms.alibi._gpt2_alibi.enlarge_mask"
 )
 
 trainer = Trainer(
     model=model,
     train_dataloader=train_dataloader,
+    eval_dataloader=eval_dataloader,
     max_duration='1ep',
     algorithms=[alibi]
 )

@@ -139,25 +139,22 @@ class StreamingDataset(IterableDataset):
         self.batch_size = batch_size
 
         self.compression_scheme = None
-        if remote is not None and dist.get_local_rank() == 0:
+        if remote is not None:
             try:
-                compression_local = self._download_file(get_compression_scheme_basename())
+                compression_local = self._download_file(get_compression_scheme_basename(),
+                                                        wait=(dist.get_local_rank() != 0),
+                                                        local_basename=get_compression_scheme_basename() + '.old')
                 with open(compression_local, 'r') as fp:
-                    compression_scheme = fp.read()
+                    compression_scheme = fp.read().rstrip()
                     self.compression_scheme = compression_scheme if compression_scheme != '' else None
                     if remote == local and self.compression_scheme is not None:
                         raise DatasetCompressionException('cannot decompress when remote == local')
 
-                # remove compression metadata file, since local dataset is decompressed.
-                os.remove(compression_local)
-
             except FileNotFoundError:
+                compression_local = os.path.join(self.local, get_compression_scheme_basename() + '.old')
+                with open(compression_local, 'x') as fp:
+                    fp.write('')
                 pass
-
-        # Broadcast compression scheme to all ranks
-        compression_scheme_list = [self.compression_scheme]
-        dist.broadcast_object_list(compression_scheme_list)
-        self.compression_scheme = compression_scheme_list[0]
 
         # Load the index file containing the shard metadata
         # This file contains the shard and offset in bytes of each sample (for direct access).
@@ -175,7 +172,7 @@ class StreamingDataset(IterableDataset):
         self._download_status = _DownloadStatus.NOT_STARTED
         self._download_exception: Exception
 
-    def _download_file(self, basename: str, wait: bool = False) -> str:
+    def _download_file(self, basename: str, wait: bool = False, local_basename: Optional[str] = None) -> str:
         """Safely download a file from remote to local cache.
 
         Args:
@@ -185,11 +182,12 @@ class StreamingDataset(IterableDataset):
         Returns:
             str: Local cache filename.
         """
+        local_basename = local_basename if local_basename is not None else basename
         if self.remote is None:
             remote = self.remote
         else:
             remote = os.path.join(self.remote, basename)
-        local = os.path.join(self.local, basename)
+        local = os.path.join(self.local, local_basename)
         download_or_wait(remote=remote, local=local, wait=wait, max_retries=self.max_retries, timeout=self.timeout)
         local, _ = split_compression_suffix(local)
         return local
@@ -229,9 +227,13 @@ class StreamingDataset(IterableDataset):
                     np.random.shuffle(todo_ids)
             else:
                 if self._download_status == _DownloadStatus.IN_PROGRESS:
+                    self._downloaded_ids.reverse()
                     self._downloaded_ids.extend(new_ids)
+                    self._downloaded_ids.reverse()
                 for todo_ids in self._epoch_to_todo_ids.values():
+                    todo_ids.reverse()
                     todo_ids.extend(new_ids)
+                    todo_ids.reverse()
 
     def download(self) -> None:
         """Download and assimilate missing shards."""
@@ -319,43 +321,44 @@ class StreamingDataset(IterableDataset):
 
         return self._unpack_sample(data)
 
-    def _make_new_growing_epoch(self) -> int:
-        """Start a new growing epoch, in which we own the sample sequence because it grows.
+    def _iter_ids_static(self) -> Iterator[int]:
+        """Get an iterator over all our sample IDs.
 
         Returns:
-            int: The epoch ID, an identifier which is given back to the caller.
+            Iterator[int]: Each sample ID.
+        """
+        ids = list(self._downloaded_ids)
+        if self.shuffle:
+            np.random.shuffle(ids)
+            yield from ids
+        else:
+            yield from ids[::-1]
+
+    def _iter_ids_dynamic(self) -> Iterator[int]:
+        """Get an iterator over all our sample IDs as they become downloaded.
+
+        If we are currently out of samples but not finished downloading the shards, blocks until it has new samples.
+
+        Returns:
+            Iterator[int]: Each sample ID.
         """
         with self._lock:
             epoch = self._next_epoch
             self._next_epoch += 1
-            self._epoch_to_todo_ids[epoch] = list(self._downloaded_ids)
-        return epoch
+            self._epoch_to_todo_ids[epoch] = todo_ids = list(self._downloaded_ids)
 
-    def _next_id(self, epoch: int) -> Optional[int]:
-        """Get next sample of the growing epoch given by epoch, or None if done.
-
-        If we are currently out of samples but not finished downloading the shards, blocks until it has new samples.
-
-        Args:
-            epoch (int): The epoch, an identifier for this sequence of samples.
-
-        Returns:
-            int: ID of next sample.
-        """
         while True:
             with self._lock:
-                todo_ids = self._epoch_to_todo_ids[epoch]
                 if todo_ids:
-                    # Higher perf to pop last, but shuffle=False wants in-order traversal
-                    if self.shuffle:
-                        return todo_ids.pop(-1)
-                    else:
-                        return todo_ids.pop(0)
-                elif self._download_status in [_DownloadStatus.NOT_STARTED, _DownloadStatus.IN_PROGRESS]:
+                    yield todo_ids.pop()
+                    continue
+                elif self._download_status == _DownloadStatus.NOT_STARTED:
+                    pass
+                elif self._download_status == _DownloadStatus.IN_PROGRESS:
                     pass
                 elif self._download_status == _DownloadStatus.DONE:
                     del self._epoch_to_todo_ids[epoch]
-                    return None
+                    return
                 elif self._download_status == _DownloadStatus.FAILED:
                     raise self._download_exception
                 else:
@@ -368,22 +371,16 @@ class StreamingDataset(IterableDataset):
         Returns:
             Iterator[int]: Each sample ID.
         """
+        if not hasattr(self, '_lock'):
+            self._lock = Lock()
+
         with self._lock:
             is_downloaded = self._download_status == _DownloadStatus.DONE
 
         if is_downloaded:
-            ids = list(self._downloaded_ids)
-            if self.shuffle:
-                np.random.shuffle(ids)
-            for idx in ids:
-                yield idx
+            yield from self._iter_ids_static()
         else:
-            epoch = self._make_new_growing_epoch()
-            while True:
-                idx = self._next_id(epoch)
-                if idx is None:
-                    break
-                yield idx
+            yield from self._iter_ids_dynamic()
 
     def __iter__(self) -> Iterator[Any]:
         """Iterate over all the samples in our partition.
@@ -394,9 +391,6 @@ class StreamingDataset(IterableDataset):
         Returns:
             Iterator[Any]: Each sample.
         """
-        if not hasattr(self, '_lock'):
-            self._lock = Lock()
-
         Thread(target=self.download, daemon=True).start()
 
         for idx in self._iter_ids():
