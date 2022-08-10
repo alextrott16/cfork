@@ -212,16 +212,9 @@ def spawn_finetuning_jobs(
         'stsb': [19, 8364, 717, 10536, 90166],
     }
 
-    # Set up CUDA environment(s) and process pool
-    ctx = mp.get_context('spawn')
-    cuda_envs = init_cuda_queue(torch.cuda.device_count(), ctx)
-    free_port = get_free_tcp_port()
-    executor = Pool(max_workers=torch.cuda.device_count(),
-                    initializer=init_cuda_env,
-                    initargs=(cuda_envs, free_port),
-                    mp_context=ctx)
-
-    # Fine-tune from pre-trained checkpoint(s)
+    # To avoid memory leak problems, we cannot submit everything to one Pool.
+    # We will list out all the jobs we will enqueue, then split them into several rounds of Pools.
+    job_specs = []
     ckpt_parent_pairs = zip(ckpt_load_paths, parent_ckpts)
     for parent_idx, ckpt_parent_pair in enumerate(ckpt_parent_pairs):
         ckpt_load_path, parent_ckpt = ckpt_parent_pair
@@ -232,17 +225,65 @@ def spawn_finetuning_jobs(
         for task, save_ckpt in task_to_save_ckpt.items():
             # Run 1 or more fine-tune trainers from this checkpoint, using a different seed override for each
             for seed in seed_overrides[task]:
-                _ = executor.submit(train_finetune, base_yaml_file, task, save_ckpt, ckpt_load_path, parent_ckpt,
-                                    parent_idx, ckpt_save_folder, save_locally, free_port + rank, load_ignore_keys,
-                                    seed)
-                # future.add_done_callback(
-                #     lambda future: log_metrics(future.result(), ckpt_filename=parent_ckpt, glue_metrics=glue_metrics))
+                job_specs.append([task, save_ckpt, ckpt_load_path, parent_ckpt, parent_idx, int(rank), int(seed)])
                 rank += 1
 
-    executor.shutdown(wait=True)  # wait for processes and callbacks to complete
+    # Set up 1 or more Pools to handle the jobs in `job_specs`, with each Pool being no more than 100 jobs.
+    while len(job_specs) > 0:
+        # Set up CUDA environment(s) and process pool
+        ctx = mp.get_context('spawn')
+        cuda_envs = init_cuda_queue(torch.cuda.device_count(), ctx)
+        free_port = get_free_tcp_port()
+        executor = Pool(max_workers=torch.cuda.device_count(),
+                        initializer=init_cuda_env,
+                        initargs=(cuda_envs, free_port),
+                        mp_context=ctx)
+        pool_size = 0
 
-    cuda_envs.close()
-    cuda_envs.join_thread()
+        # Fine-tune from pre-trained checkpoint(s)
+        while pool_size < 100 and len(job_specs) > 0:
+            task, save_ckpt, ckpt_load_path, parent_ckpt, parent_idx, rank, seed = job_specs.pop(0)
+            _ = executor.submit(train_finetune, base_yaml_file, task, save_ckpt, ckpt_load_path, parent_ckpt,
+                                parent_idx, ckpt_save_folder, save_locally, free_port + rank, load_ignore_keys,
+                                seed)
+            pool_size += 1
+
+        executor.shutdown(wait=True)  # wait for processes and callbacks to complete
+
+        cuda_envs.close()
+        cuda_envs.join_thread()
+
+    # # Set up CUDA environment(s) and process pool
+    # ctx = mp.get_context('spawn')
+    # cuda_envs = init_cuda_queue(torch.cuda.device_count(), ctx)
+    # free_port = get_free_tcp_port()
+    # executor = Pool(max_workers=torch.cuda.device_count(),
+    #                 initializer=init_cuda_env,
+    #                 initargs=(cuda_envs, free_port),
+    #                 mp_context=ctx)
+
+    # # Fine-tune from pre-trained checkpoint(s)
+    # ckpt_parent_pairs = zip(ckpt_load_paths, parent_ckpts)
+    # for parent_idx, ckpt_parent_pair in enumerate(ckpt_parent_pairs):
+    #     ckpt_load_path, parent_ckpt = ckpt_parent_pair
+    #     # `ckpt_load_path` provides the path to the checkpoint from which we load the starting weights used when fine-tuning
+    #     # `parent_ckpt` keeps track of the original pre-training checkpoint, for tasks with multiple fine-tuning stages (e.g., RTE)
+    #     # `parent_idx` is used for bookkeeping, so `parent_ckpt` can be internally recovered from the path used to save fine-tune checkpoints
+    #     rank = 0
+    #     for task, save_ckpt in task_to_save_ckpt.items():
+    #         # Run 1 or more fine-tune trainers from this checkpoint, using a different seed override for each
+    #         for seed in seed_overrides[task]:
+    #             _ = executor.submit(train_finetune, base_yaml_file, task, save_ckpt, ckpt_load_path, parent_ckpt,
+    #                                 parent_idx, ckpt_save_folder, save_locally, free_port + rank, load_ignore_keys,
+    #                                 seed)
+    #             # future.add_done_callback(
+    #             #     lambda future: log_metrics(future.result(), ckpt_filename=parent_ckpt, glue_metrics=glue_metrics))
+    #             rank += 1
+
+    # executor.shutdown(wait=True)  # wait for processes and callbacks to complete
+
+    # cuda_envs.close()
+    # cuda_envs.join_thread()
 
 
 def train_finetune(
@@ -285,6 +326,8 @@ def train_finetune(
     if seed_override is not None:
         assert seed_override > 0
         ft_hparams.seed = seed_override
+
+    ft_hparams.max_duration = '100ba' # FOR TESTING!!!!!
 
     # add finetune-specific tags to wandb if logger exists
     # TODO(Evan): Use the config logging API in https://mosaicml.atlassian.net/browse/CO-586 to set tags and groups
