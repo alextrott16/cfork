@@ -327,8 +327,6 @@ def train_finetune(
         assert seed_override > 0
         ft_hparams.seed = seed_override
 
-    ft_hparams.max_duration = '100ba' # FOR TESTING!!!!!
-
     # add finetune-specific tags to wandb if logger exists
     # TODO(Evan): Use the config logging API in https://mosaicml.atlassian.net/browse/CO-586 to set tags and groups
     if ft_hparams.loggers:
