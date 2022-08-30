@@ -18,8 +18,9 @@ class BertSelfAttentionPre(torch.nn.Module):
         normformer (bool, optional): Whether to implement this as a NormFormer, default ``False``.
     """
 
-    def __init__(self, module: BertSelfAttention, layer_norm_eps: float = 1e-12, normformer: bool = False):
+    def __init__(self, module: torch.nn.Module, layer_norm_eps: float = 1e-12, normformer: bool = False):
         super().__init__()
+        assert isinstance(module, BertSelfAttention)
         self.normformer = normformer
         assert layer_norm_eps > 0
 
@@ -61,9 +62,9 @@ class BertIntermediatePre(torch.nn.Module):
         normformer (bool, optional): Whether to implement this as a NormFormer, default ``False``.
     """
 
-    def __init__(self, module: BertIntermediate, layer_norm_eps: float = 1e-12, normformer: bool = False):
+    def __init__(self, module: torch.nn.Module, layer_norm_eps: float = 1e-12, normformer: bool = False):
         super().__init__()
-
+        assert isinstance(module, BertIntermediate)
         self.normformer = normformer
         assert layer_norm_eps > 0
         hidden_size = module.dense.in_features
@@ -83,7 +84,7 @@ class BertIntermediatePre(torch.nn.Module):
         hidden_states = self.LayerNorm(hidden_states)
         intermediate_output = self.intermediate(hidden_states)
         # If full NormFormer, we need to do another LN on intermediate_output
-        if self.normformer:
+        if self.extra_LayerNorm is not None:
             intermediate_output = self.extra_LayerNorm(intermediate_output)
         return intermediate_output
 
@@ -99,8 +100,9 @@ class BertSelfOutputPre(torch.nn.Module):
         normformer (bool, optional): Whether to implement this as a NormFormer, default ``False``.
     """
 
-    def __init__(self, module: BertSelfOutput, layer_norm_eps: float = 1e-12, normformer: bool = False):
+    def __init__(self, module: torch.nn.Module, layer_norm_eps: float = 1e-12, normformer: bool = False):
         super().__init__()
+        assert isinstance(module, BertSelfOutput)
         self.normformer = normformer
         assert layer_norm_eps > 0
         hidden_size = module.dense.in_features
@@ -116,7 +118,7 @@ class BertSelfOutputPre(torch.nn.Module):
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        if self.normformer:
+        if self.LayerNorm is not None:
             hidden_states = self.LayerNorm(hidden_states)
         # No more LayerNorm after residual connection
         hidden_states = hidden_states + input_tensor
@@ -132,11 +134,18 @@ class BertOutputPre(torch.nn.Module):
         module (BertOutput): The BertOutput module this replaces.
         layer_norm_eps (float, optional): The epsilon parameter for the layer norm, default ``1e-12``.
         normformer (bool, optional): Whether to implement this as a NormFormer, default ``False``.
+        last_layer (bool, optional): Whether to treat this instance as the last transformer layer, default ``False``.
     """
 
-    def __init__(self, module: BertOutput, layer_norm_eps: float = 1e-12, normformer: bool = False):
+    def __init__(self,
+                 module: torch.nn.Module,
+                 layer_norm_eps: float = 1e-12,
+                 normformer: bool = False,
+                 last_layer: bool = False):
         super().__init__()
+        assert isinstance(module, BertOutput)
         self.normformer = normformer
+        self.last_layer = last_layer
         assert layer_norm_eps > 0
         intermediate_size = module.dense.in_features
         hidden_size = module.dense.out_features
@@ -145,9 +154,16 @@ class BertOutputPre(torch.nn.Module):
         self.dense = torch.nn.Linear(intermediate_size, hidden_size)
         self.dropout = torch.nn.Dropout(dropout_prob)
 
+        if self.last_layer:
+            self.LayerNorm = torch.nn.LayerNorm(hidden_size, eps=layer_norm_eps)
+        else:
+            self.LayerNorm = None
+
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        # No more LayerNorm after residual connection
+        # No more LayerNorm after residual connection (unless this is the last layer)
         hidden_states = hidden_states + input_tensor
+        if self.LayerNorm is not None:
+            hidden_states = self.LayerNorm(hidden_states)
         return hidden_states
