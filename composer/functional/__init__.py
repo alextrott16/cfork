@@ -31,6 +31,7 @@ from composer.algorithms.gradient_clipping import apply_gradient_clipping
 from composer.algorithms.label_smoothing import smooth_labels
 from composer.algorithms.layer_freezing import freeze_layers
 from composer.algorithms.mixup import mixup_batch
+from composer.algorithms.pre_layernorm import apply_pre_layernorm
 from composer.algorithms.progressive_resizing import resize_batch
 from composer.algorithms.randaugment import randaugment_image
 from composer.algorithms.selective_backprop import select_using_loss, should_selective_backprop
@@ -53,6 +54,7 @@ __all__ = [
     'apply_gated_linear_units',
     'apply_ghost_batchnorm',
     'apply_gradient_clipping',
+    'apply_pre_layernorm',
     'smooth_labels',
     'freeze_layers',
     'mixup_batch',

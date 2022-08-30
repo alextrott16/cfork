@@ -22,6 +22,7 @@ from composer.algorithms.label_smoothing import LabelSmoothing
 from composer.algorithms.layer_freezing import LayerFreezing
 from composer.algorithms.mixup import MixUp
 from composer.algorithms.no_op_model import NoOpModel
+from composer.algorithms.pre_layernorm import PreLayerNorm
 from composer.algorithms.progressive_resizing import ProgressiveResizing
 from composer.algorithms.randaugment import RandAugment
 from composer.algorithms.sam import SAM
@@ -58,4 +59,5 @@ algorithm_registry: Dict[str, Union[Type[Algorithm], Type[hp.Hparams]]] = {
     'alibi': Alibi,
     'selective_backprop': SelectiveBackprop,
     'gradient_clipping': GradientClipping,
+    'pre_layernorm': PreLayerNorm,
 }

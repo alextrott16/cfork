@@ -54,6 +54,7 @@ from composer.algorithms.label_smoothing import LabelSmoothing
 from composer.algorithms.layer_freezing import LayerFreezing
 from composer.algorithms.mixup import MixUp
 from composer.algorithms.no_op_model import NoOpModel
+from composer.algorithms.pre_layernorm import PreLayerNorm
 from composer.algorithms.progressive_resizing import ProgressiveResizing
 from composer.algorithms.randaugment import RandAugment, RandAugmentTransform
 from composer.algorithms.sam import SAM
@@ -83,6 +84,7 @@ __all__ = [
     'LayerFreezing',
     'MixUp',
     'NoOpModel',
+    'PreLayerNorm',
     'ProgressiveResizing',
     'RandAugment',
     'RandAugmentTransform',
