@@ -17,7 +17,8 @@ try:
     from transformers import BertForMaskedLM, BertForSequenceClassification
     from transformers.models.bert.configuration_bert import BertConfig
 
-    from composer.algorithms.pre_layernorm.pre_layernorm_layers import (BertIntermediate, BertIntermediatePre,
+    from composer.algorithms.pre_layernorm.pre_layernorm_layers import (BERTGatedFFOutput, BertGatedFFOutputPre,
+                                                                        BertIntermediate, BertIntermediatePre,
                                                                         BertOutput, BertOutputPre, BertSelfAttention,
                                                                         BertSelfAttentionPre, BertSelfOutput,
                                                                         BertSelfOutputPre)
@@ -61,9 +62,6 @@ def apply_pre_layernorm(model: torch.nn.Module,
                                                          isinstance(model.model, BertForSequenceClassification))):
         raise TypeError('Pre-LayerNorm only has a surgery policy defined for instances of BERT models.')
 
-    if normformer:
-        raise NotImplementedError('The NormFormer version of Pre-LN is not currently available.')
-
     # prepare the replacement policy and perform replacement
     if not hasattr(model, 'config'):
         raise TypeError('Bert config must be accessible through model.config')
@@ -88,6 +86,11 @@ def apply_pre_layernorm(model: torch.nn.Module,
                                               layer_norm_eps=layer_norm_eps,
                                               normformer=normformer,
                                               last_layer=bool(idx + 1 == num_hidden_layers)),
+        BERTGatedFFOutput:
+            lambda module, idx: BertGatedFFOutputPre(module,
+                                                     layer_norm_eps=layer_norm_eps,
+                                                     normformer=normformer,
+                                                     last_layer=bool(idx + 1 == num_hidden_layers)),
     }
     replaced_instances = module_surgery.replace_module_classes(module=model, optimizers=optimizers, policies=policy)
     if len(replaced_instances) == 0:
