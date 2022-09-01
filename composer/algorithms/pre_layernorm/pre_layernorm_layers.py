@@ -31,11 +31,11 @@ class BertSelfAttentionPre(torch.nn.Module):
 
         self.n_heads = module.num_attention_heads
 
-        # Some extra HeadScale parameters needed if we're doing full NormFormer
-        if self.normformer:
-            self.head_scales = torch.nn.Parameter(torch.ones(1, 1, self.n_heads, 1), requires_grad=True)
-        else:
-            self.head_scales = None
+        # # Some extra HeadScale parameters needed if we're doing full NormFormer
+        # if self.normformer:
+        #     self.head_scales = torch.nn.Parameter(torch.ones(1, 1, self.n_heads, 1), requires_grad=True)
+        # else:
+        #     self.head_scales = None
 
     def _apply_head_scaling(self, attn_output):
         """Normformer's head scaling op."""
@@ -70,9 +70,9 @@ class BertSelfAttentionPre(torch.nn.Module):
         hidden_states = self.LayerNorm(hidden_states)
         attn_output = self.attn(hidden_states, attention_mask, head_mask, encoder_hidden_states, encoder_attention_mask,
                                 past_key_value, output_attentions)
-        # If full NormFormer, we need to do Head Scaling
-        if self.normformer:
-            attn_output = self._apply_head_scaling(attn_output)
+        # # If full NormFormer, we need to do Head Scaling
+        # if self.normformer:
+        #     attn_output = self._apply_head_scaling(attn_output)
         return attn_output
 
 
