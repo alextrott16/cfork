@@ -67,6 +67,8 @@ class GLUETrainerHparams(hp.Hparams):
         'checkpoint on a single task (one for each seed). Tasks that are not included in the dictionary use the (single) seed '
         'in their default YAML.',
         default=None)
+    lr_multiplier: Optional[float] = hp.optional(
+        doc='Learning rate multiplier. Defaults to 1.0 (i.e., use the default lr).', default=1.0)
 
     hparams_registry = {
         'algorithms': algorithm_registry,

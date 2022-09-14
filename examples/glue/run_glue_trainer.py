@@ -170,6 +170,7 @@ def merge_hparams(hparams: TrainerHparams, override_hparams: GLUETrainerHparams)
     hparams.model = override_hparams.model if override_hparams.model else hparams.model
     hparams.run_name = override_hparams.run_name if override_hparams.run_name else hparams.run_name
     hparams.save_folder = override_hparams.save_folder if override_hparams.save_folder else hparams.save_folder
+    hparams.schedulers[0].alpha_i = override_hparams.lr_multiplier if override_hparams.lr_multiplier else 1.0
 
     return hparams
 
