@@ -170,7 +170,7 @@ def merge_hparams(hparams: TrainerHparams, override_hparams: GLUETrainerHparams)
     hparams.model = override_hparams.model if override_hparams.model else hparams.model
     hparams.run_name = override_hparams.run_name if override_hparams.run_name else hparams.run_name
     hparams.save_folder = override_hparams.save_folder if override_hparams.save_folder else hparams.save_folder
-    hparams.schedulers[0].alpha_i = override_hparams.lr_multiplier if override_hparams.lr_multiplier else 1.0
+    # hparams.schedulers[0].alpha_i = override_hparams.lr_multiplier if override_hparams.lr_multiplier else 1.0
 
     return hparams
 
@@ -181,6 +181,9 @@ def _setup_gpu_queue(num_gpus: int, manager: SyncManager):
     for gpu_id in range(num_gpus):
         gpu_queue.put(gpu_id)
     return gpu_queue
+
+
+from torch.optim.lr_scheduler import LambdaLR
 
 
 def spawn_finetuning_jobs(
@@ -332,6 +335,15 @@ def train_finetune(
     try:
         trainer = ft_hparams.initialize_object()
 
+        # A bit of a temporary hack
+        if finetune_hparams:
+            lr_multiplier = finetune_hparams.lr_multiplier
+        else:
+            lr_multiplier = 1.0
+        for scheduler in trainer.state.schedulers:
+            if isinstance(scheduler, torch.optim.lr_scheduler.LambdaLR):
+                scheduler.base_lrs = [x * lr_multiplier for x in scheduler.base_lrs]
+
         # if using wandb, store the config and other information inside the wandb run
         try:
             import wandb
@@ -340,7 +352,12 @@ def train_finetune(
         else:
             if wandb.run is not None:
                 wandb.config.update(ft_hparams.to_dict())
-                wandb.config.update({'pretrained_ckpt': parent_ckpt, 'task': task, 'pretrained_idx': parent_idx})
+                wandb.config.update({
+                    'pretrained_ckpt': parent_ckpt,
+                    'task': task,
+                    'pretrained_idx': parent_idx,
+                    'lr_multiplier': lr_multiplier
+                })
 
         trainer.fit()
         print(f'\nFINISHED TRAINING TASK {task.upper()}\n')
