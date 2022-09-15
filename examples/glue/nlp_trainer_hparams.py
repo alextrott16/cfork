@@ -17,6 +17,8 @@ from composer.core.algorithm import Algorithm
 from composer.loggers.logger_destination import LoggerDestination
 from composer.loggers.logger_hparams_registry import logger_registry
 from composer.models.model_hparams import ModelHparams
+from composer.optim import ComposerScheduler
+from composer.optim.scheduler_hparams_registry import scheduler_registry
 from composer.trainer.trainer import Trainer
 from composer.trainer.trainer_hparams import TrainerHparams, model_registry
 from composer.utils.object_store.object_store_hparams import ObjectStoreHparams, object_store_registry
@@ -45,6 +47,7 @@ class GLUETrainerHparams(hp.Hparams):
             per checkpoint. Each key must correspond to one of the GLUE tasks. This lets you train multiple fine-tune runs per
             checkpoint on a single task (one for each seed). Tasks that are not included in the dictionary use the (single) seed
             in their default YAML.
+        schedulers (List[ComposerSchedulers], optional): See :class:`.Trainer`.
 
     Example:
         Specifying ``save_folder: path/to/example/folder`` in a yaml will force all glue tasks in composer/yamls/models/glue/ to
@@ -67,8 +70,7 @@ class GLUETrainerHparams(hp.Hparams):
         'checkpoint on a single task (one for each seed). Tasks that are not included in the dictionary use the (single) seed '
         'in their default YAML.',
         default=None)
-    lr_multiplier: Optional[float] = hp.optional(
-        doc='Learning rate multiplier. Defaults to 1.0 (i.e., use the default lr).', default=1.0)
+    schedulers: Optional[List[ComposerScheduler]] = hp.auto(Trainer, 'schedulers')
 
     hparams_registry = {
         'algorithms': algorithm_registry,
@@ -76,6 +78,7 @@ class GLUETrainerHparams(hp.Hparams):
         'load_logger_destination': logger_registry,
         'loggers': logger_registry,
         'model': model_registry,
+        'schedulers': scheduler_registry,
     }
 
 
