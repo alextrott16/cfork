@@ -171,6 +171,7 @@ def merge_hparams(hparams: TrainerHparams, override_hparams: GLUETrainerHparams)
     hparams.run_name = override_hparams.run_name if override_hparams.run_name else hparams.run_name
     hparams.save_folder = override_hparams.save_folder if override_hparams.save_folder else hparams.save_folder
     hparams.schedulers = override_hparams.schedulers if override_hparams.schedulers else hparams.schedulers
+    hparams.precision = override_hparams.precision if override_hparams.precision else hparams.precision
 
     return hparams
 
@@ -279,6 +280,10 @@ def train_finetune(
         ft_hparams = merge_hparams(task_hparams, finetune_hparams)
     else:
         ft_hparams = task_hparams
+
+    if task == 'stsb':
+        from composer.core import Precision
+        ft_hparams.precision = Precision('fp32')  # Do not allow precision to be overwritten for stsb
 
     ft_hparams.load_path = load_path
     ft_hparams.device = DeviceGPU(

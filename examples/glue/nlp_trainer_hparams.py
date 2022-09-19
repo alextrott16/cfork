@@ -13,6 +13,7 @@ import yahp as hp
 
 import composer
 from composer.algorithms.algorithm_hparams_registry import algorithm_registry
+from composer.core import Precision
 from composer.core.algorithm import Algorithm
 from composer.loggers.logger_destination import LoggerDestination
 from composer.loggers.logger_hparams_registry import logger_registry
@@ -48,6 +49,7 @@ class GLUETrainerHparams(hp.Hparams):
             checkpoint on a single task (one for each seed). Tasks that are not included in the dictionary use the (single) seed
             in their default YAML.
         schedulers (List[ComposerSchedulers], optional): See :class:`.Trainer`.
+        precision (Precision, optional): See :class:`.Trainer`.
 
     Example:
         Specifying ``save_folder: path/to/example/folder`` in a yaml will force all glue tasks in composer/yamls/models/glue/ to
@@ -71,6 +73,7 @@ class GLUETrainerHparams(hp.Hparams):
         'in their default YAML.',
         default=None)
     schedulers: Optional[List[ComposerScheduler]] = hp.auto(Trainer, 'schedulers')
+    precision: Optional[Precision] = hp.auto(Trainer, 'precision')
 
     hparams_registry = {
         'algorithms': algorithm_registry,
