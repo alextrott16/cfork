@@ -101,6 +101,28 @@ def sort_fused_layernorm_last(algorithms: Sequence[Algorithm], event: Event) -> 
     return sort_to_back(algorithms, cls=FusedLayerNorm)
 
 
+def sort_pre_layernorm_after_gated_linear_units(algorithms: Sequence[Algorithm], event: Event) -> Sequence[Algorithm]:
+    """If necessary, move back PreLayerNorm to ensure it happens after GatedLinearUnits.
+
+    This ensures that surgery for both PreLayerNorm and GatedLinearUnits are correct and complete.
+
+    """
+    from composer.algorithms import PreLayerNorm, GatedLinearUnits
+    pre_ln_idx = None
+    algorithms = list(algorithms)
+    for idx in range(len(algorithms)):
+        if isinstance(algorithms[idx], PreLayerNorm):
+            pre_ln_idx = idx
+        if isinstance(algorithms[idx], GatedLinearUnits):
+            # This triggers if a PreLayerNorm is found before a GatedLinearUnits
+            if pre_ln_idx is not None:
+                # Remove the PreLayerNorm algorithm and place it back after the GatedLinearUnits algorithm
+                pre_ln_algo = algorithms.pop(pre_ln_idx)
+                algorithms.insert(idx, pre_ln_algo)
+                break # This should only happen once
+    return algorithms
+
+
 def set_filo_order(algorithms: Sequence[Algorithm], event: Event) -> Sequence[Algorithm]:
     """Establish a FILO order of algorithms ``before_`` and ``after_`` events.
 
