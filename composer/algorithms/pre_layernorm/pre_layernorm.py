@@ -14,7 +14,7 @@ import torch
 from composer.models.huggingface import HuggingFaceModel
 
 try:
-    from transformers import BertForMaskedLM, BertForSequenceClassification
+    from transformers import BertPreTrainedModel
     from transformers.models.bert.configuration_bert import BertConfig
 
     from composer.algorithms.pre_layernorm.pre_layernorm_layers import (BERTGatedFFOutput, BertGatedFFOutputPre,
@@ -65,11 +65,12 @@ def apply_pre_layernorm(model: torch.nn.Module,
     if not IS_TRANSFORMERS_INSTALLED:
         raise MissingConditionalImportError(extra_deps_group='nlp', conda_package='transformers')
 
-    # ensure that the model is an instance of a BERT model, since our replacement policy is only defined for BERTs
-    if not isinstance(model, HuggingFaceModel) and not (hasattr(model, 'model') and
-                                                        (isinstance(model.model, BertForMaskedLM) or
-                                                         isinstance(model.model, BertForSequenceClassification))):
-        raise TypeError('Pre-LayerNorm only has a surgery policy defined for instances of BERT models.')
+    unwrapped_model = model.model if isinstance(model, HuggingFaceModel) else model
+
+    # ensure that the model is an instance of a Hugging Face BertPreTrainedModel class, since our replacement policy is only defined for BERTs
+    if not isinstance(unwrapped_model, BertPreTrainedModel):
+        raise TypeError(
+            'Pre-LayerNorm only has a surgery policy defined for subclasses of transformers.BertPreTrainedModel')
 
     # prepare the replacement policy and perform replacement
     if not hasattr(model, 'config'):
