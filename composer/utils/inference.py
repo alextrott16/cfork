@@ -21,7 +21,7 @@ import torch.nn as nn
 from composer.utils import dist
 from composer.utils.checkpoint import download_checkpoint
 from composer.utils.iter_helpers import ensure_tuple
-from composer.utils.misc import is_model_ddp, is_model_deepspeed
+from composer.utils.misc import is_model_ddp, is_model_deepspeed, model_eval_mode
 from composer.utils.object_store import ObjectStore
 from composer.utils.string_enum import StringEnum
 
@@ -63,6 +63,7 @@ def export_for_inference(
     save_path: str,
     save_object_store: Optional[ObjectStore] = None,
     sample_input: Optional[Any] = None,
+    dynamic_axes: Optional[Any] = None,
     surgery_algs: Optional[Union[Callable[[nn.Module], nn.Module], Sequence[Callable[[nn.Module], nn.Module]]]] = None,
     transforms: Optional[Sequence[Transform]] = None,
     load_path: Optional[str] = None,
@@ -86,6 +87,8 @@ def export_for_inference(
         sample_input (Any, optional): Example model inputs used for tracing. This is needed for "onnx" export.
             The ``sample_input`` need not match the batch size you intend to use for inference. However, the model
             should accept the ``sample_input`` as is. (default: ``None``)
+        dynamic_axes (Any, optional): Dictionary specifying the axes of input/output tensors as dynamic. May be required
+            for exporting models using older versions of PyTorch when types cannot be inferred.
         surgery_algs (Union[Callable, Sequence[Callable]], optional): Algorithms that should be applied to the model
             before loading a checkpoint. Each should be callable that takes a model and returns modified model.
             ``surgery_algs`` are applied before ``transforms``. (default: ``None``)
@@ -118,11 +121,24 @@ def export_for_inference(
     if dist.get_global_rank() != 0:
         return
 
-    # make a copy of the model so that we don't modify the original model
+    # Make a copy of the model so that we don't modify the original model
     model = copy.deepcopy(model)
 
-    # make a copy of the sample input so that we don't modify the original sample input
+    # Make a copy of the sample input so that we don't modify the original sample input
     sample_input = copy.deepcopy(sample_input)
+
+    # Move model and sample input to CPU for export
+    cpu = torch.device('cpu')
+    model.to(device=cpu)
+    if sample_input is not None:
+        sample_input = ensure_tuple(sample_input)
+        for i in range(len(sample_input)):
+            if isinstance(sample_input[i], torch.Tensor):
+                sample_input[i] = sample_input[i].to(cpu)  # type: ignore
+            elif isinstance(sample_input[i], dict):
+                for key, value in sample_input[i].items():
+                    if isinstance(value, torch.Tensor):
+                        sample_input[i][key] = value.to(cpu)
 
     # Apply surgery algorithms in the given order
     for alg in ensure_tuple(surgery_algs):
@@ -143,54 +159,66 @@ def export_for_inference(
             if len(unexpected_keys) > 0:
                 log.warning(f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}")
 
-    model.eval()
-    # Apply transformations (i.e., inference optimizations) in the given order
-    for transform in ensure_tuple(transforms):
-        model = transform(model)
+    with model_eval_mode(model):
+        # Apply transformations (i.e., inference optimizations) in the given order
+        for transform in ensure_tuple(transforms):
+            model = transform(model)
 
-    is_remote_store = save_object_store is not None
-    tempdir_ctx = tempfile.TemporaryDirectory() if is_remote_store else contextlib.nullcontext(None)
-    with tempdir_ctx as tempdir:
-        if is_remote_store:
-            local_save_path = os.path.join(str(tempdir), 'model.export')
-        else:
-            local_save_path = save_path
-
-        if save_format == ExportFormat.TORCHSCRIPT:
-            export_model = None
-            try:
-                export_model = torch.jit.script(model)
-            except Exception:
-                if sample_input is not None:
-                    log.warning('Scripting with torch.jit.script failed. Trying torch.jit.trace!',)
-                    export_model = torch.jit.trace(model, sample_input)
-                else:
-                    log.warning(
-                        'Scripting with torch.jit.script failed and sample inputs are not provided for tracing '
-                        'with torch.jit.trace',
-                        exc_info=True)
-
-            if export_model is not None:
-                torch.jit.save(export_model, local_save_path)
+        is_remote_store = save_object_store is not None
+        tempdir_ctx = tempfile.TemporaryDirectory() if is_remote_store else contextlib.nullcontext(None)
+        with tempdir_ctx as tempdir:
+            if is_remote_store:
+                local_save_path = os.path.join(str(tempdir), 'model.export')
             else:
-                raise RuntimeError('Scritping and tracing failed! No model is getting exported.')
+                local_save_path = save_path
 
-        if save_format == ExportFormat.ONNX:
-            if sample_input is None:
-                raise ValueError(f'sample_input argument is required for onnx export')
-            sample_input = ensure_tuple(sample_input)
+            if save_format == ExportFormat.TORCHSCRIPT:
+                export_model = None
+                try:
+                    export_model = torch.jit.script(model)
+                except Exception:
+                    if sample_input is not None:
+                        log.warning('Scripting with torch.jit.script failed. Trying torch.jit.trace!',)
+                        export_model = torch.jit.trace(model, sample_input)
+                    else:
+                        log.warning(
+                            'Scripting with torch.jit.script failed and sample inputs are not provided for tracing '
+                            'with torch.jit.trace',
+                            exc_info=True)
 
-            torch.onnx.export(
-                model,
-                sample_input,
-                local_save_path,
-                input_names=['input'],
-                output_names=['output'],
-            )
+                if export_model is not None:
+                    torch.jit.save(export_model, local_save_path)
+                else:
+                    raise RuntimeError('Scritping and tracing failed! No model is getting exported.')
 
-        # upload if required.
-        if is_remote_store:
-            save_object_store.upload_object(save_path, local_save_path)
+            if save_format == ExportFormat.ONNX:
+                if sample_input is None:
+                    raise ValueError(f'sample_input argument is required for onnx export')
+
+                input_names = []
+
+                # Extract input names from sample_input if it contains dicts
+                for i in range(len(sample_input)):
+                    if isinstance(sample_input[i], dict):
+                        input_names += list(sample_input[i].keys())
+
+                # Default input name if no dict present
+                if input_names == []:
+                    input_names = ['input']
+
+                torch.onnx.export(
+                    model,
+                    sample_input,
+                    local_save_path,
+                    input_names=input_names,
+                    output_names=['output'],
+                    dynamic_axes=dynamic_axes,
+                    opset_version=13,
+                )
+
+            # upload if required.
+            if is_remote_store:
+                save_object_store.upload_object(save_path, local_save_path)
 
 
 def export_with_logger(

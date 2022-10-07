@@ -78,6 +78,7 @@ A typical use case is saving checkpoints to object store (e.g. S3) when there is
 
 
 .. testcode::
+    :skipif: not _LIBCLOUD_INSTALLED
 
     from composer.loggers import ObjectStoreLogger
     from composer.utils.object_store import S3ObjectStore
@@ -111,6 +112,7 @@ Example: Fine-tuning
 To run fine-tuning on a spot instance, ``load_path`` would be set to the original weights and an object store logger would be added.
 
 .. testsetup:: fine_tune
+    :skipif: not _LIBCLOUD_INSTALLED
 
     from composer.loggers import ObjectStoreLogger
     from composer.utils.object_store import S3ObjectStore
@@ -134,6 +136,7 @@ To run fine-tuning on a spot instance, ``load_path`` would be set to the origina
     trainer.fit()
 
 .. testcode:: fine_tune
+    :skipif: not _LIBCLOUD_INSTALLED
 
     trainer = Trainer(
         ...,

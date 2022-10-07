@@ -298,6 +298,7 @@ and then the :class:`.ObjectStoreLogger` logger will upload checkpoints to the s
 Behind the scenes, the :class:`.ObjectStoreLogger` uses :doc:`Apache Libcloud <libcloud:storage/index>`.
 
 .. testcode::
+    :skipif: not _LIBCLOUD_INSTALLED
 
     from composer.loggers import ObjectStoreLogger
     from composer.utils import LibcloudObjectStore
@@ -333,6 +334,7 @@ Once you've configured your object store logger per above, all that's left is to
 :class:`.Trainer` as part of the ``loggers``:
 
 .. testcode::
+    :skipif: not _LIBCLOUD_INSTALLED
 
     from composer.loggers import ObjectStoreLogger
 
@@ -374,6 +376,7 @@ Checkpoints saved to an object store can also be loaded in the same way as files
 should be the path to the checkpoint file *within the container/bucket*.
 
 .. testcode::
+    :skipif: not _LIBCLOUD_INSTALLED
 
     from composer.utils import LibcloudObjectStore
     from composer.trainer import Trainer

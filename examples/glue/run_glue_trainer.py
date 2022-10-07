@@ -187,7 +187,7 @@ def _setup_gpu_queue(num_gpus: int, manager: SyncManager):
 def spawn_finetuning_jobs(
     task_to_save_ckpt: Dict[str, bool],
     ckpt_load_paths: List[str],
-    ckpt_save_folder: str,
+    save_folder: str,
     base_yaml_file: str,
     save_locally: bool,
     load_locally: bool,
@@ -235,8 +235,7 @@ def spawn_finetuning_jobs(
                         result = pool.apply_async(
                             train_finetune,
                             args=(gpu_queue, base_yaml_file, task, save_ckpt, ckpt_load_path, parent_ckpt, parent_idx,
-                                  ckpt_save_folder, save_locally, load_locally, free_port + rank, load_ignore_keys,
-                                  seed),
+                                  save_folder, save_locally, load_locally, free_port + rank, load_ignore_keys, seed),
                         )
                         results.append(result)
                         rank += 1

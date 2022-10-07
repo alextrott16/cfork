@@ -16,6 +16,7 @@ import torch
 import yahp as hp
 
 import composer
+from composer import utils
 from composer.algorithms.algorithm_hparams_registry import algorithm_registry
 from composer.callbacks.callback_hparams_registry import callback_registry
 from composer.core import Algorithm, Callback, DataSpec, Evaluator, Event, Precision, State, Time
@@ -33,9 +34,9 @@ from composer.optim import ComposerScheduler
 from composer.optim.optimizer_hparams_registry import OptimizerHparams, optimizer_registry
 from composer.optim.scheduler_hparams_registry import scheduler_registry
 from composer.profiler import Profiler
-from composer.trainer.ddp import DDPSyncStrategy
 from composer.trainer.devices import Device, DeviceCPU, DeviceGPU, DeviceTPU
 from composer.trainer.devices.device_hparams_registry import device_registry
+from composer.trainer.dist_strategy import DDPSyncStrategy
 from composer.trainer.trainer import Trainer, _is_tpu_installed
 from composer.utils import dist, reproducibility
 from composer.utils.object_store.object_store_hparams import ObjectStoreHparams, object_store_registry
@@ -385,7 +386,11 @@ class TrainerHparams(hp.Hparams):
     # Profiling
     profiler: Optional[Profiler] = hp.auto(Trainer, 'profiler')
 
+    def __post_init__(self):
+        utils.warn_yahp_deprecation()
+
     def validate(self):
+
         super().validate()
 
         if self.deepspeed_config is not None:
