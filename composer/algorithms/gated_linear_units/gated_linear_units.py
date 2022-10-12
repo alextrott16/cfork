@@ -91,6 +91,8 @@ def apply_gated_linear_units(model: torch.nn.Module,
         # get the activation functions used
         act_fns = {module.intermediate_act_fn for module in model.modules() if isinstance(module, BertIntermediate)}
 
+        print(f'\n\nHEY I FOUND THESE ACTIVATION FUNCTIONS: {act_fns}\n\n')
+
         if len(act_fns) != 1:
             raise ValueError('The model has non-uniform activation functions, which is currently unsupported.')
 
