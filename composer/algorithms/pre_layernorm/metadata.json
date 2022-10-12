@@ -1,0 +1,15 @@
+{
+    "pre_layernorm": {
+        "name": "Pre-LayerNorm",
+        "class_name": "PreLayerNorm",
+        "functional": "apply_pre_layernorm",
+        "tldr": "Converts the default Post-LN architecture into the Pre-LN (optionally, NormFormer) architecture.",
+        "attribution": "(Shleifer et al, 2021)",
+        "link": "https://arxiv.org/abs/2110.09456",
+        "domains": [
+            "nlp"
+        ],
+        "summary": "The Pre-LN configuration makes BERT training more stable, allowing higher learning rates. Additionally, the NormFormer variant improves convergence.",
+        "use": "Transformers"
+    }
+}
