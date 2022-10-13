@@ -29,6 +29,9 @@ class BertSelfAttentionPre(torch.nn.Module):
         self.LayerNorm = torch.nn.LayerNorm(module.query.in_features, eps=layer_norm_eps)
         self.attn = module
 
+        # Since this will replace `module` and wraps `module`, we need to flag that `module` has already received this surgery
+        module.pre_ln_applied = True
+
         self.n_heads = module.num_attention_heads
 
         # Some extra HeadScale parameters possibly
@@ -96,6 +99,9 @@ class BertIntermediatePre(torch.nn.Module):
 
         self.LayerNorm = torch.nn.LayerNorm(hidden_size, eps=layer_norm_eps)
         self.intermediate = module
+
+        # Since this will replace `module` and wraps `module`, we need to flag that `module` has already received this surgery
+        module.pre_ln_applied = True
 
         # An extra LayerNorm needed if we're doing full NormFormer
         if ffn_layernorm:

@@ -84,14 +84,25 @@ def apply_pre_layernorm(model: torch.nn.Module,
     num_hidden_layers = getattr(model.config, 'num_hidden_layers')
     assert isinstance(layer_norm_eps, float)
     assert isinstance(num_hidden_layers, int)
+    
+    def from_BertSelfAttention(module: torch.nn.Module, idx: int):
+        if hasattr(module, 'pre_ln_applied'):
+            if module.pre_ln_applied:
+                return # Skip surgery because it has already been used to wrap `module`
+        return BertSelfAttentionPre(module, layer_norm_eps=layer_norm_eps, head_scale=head_scale)
+
+    def from_BertIntermediate(module: torch.nn.Module, idx: int):
+        if hasattr(module, 'pre_ln_applied'):
+            if module.pre_ln_applied:
+                return # Skip surgery because it has already been used to wrap `module`
+        return BertIntermediatePre(module, layer_norm_eps=layer_norm_eps, ffn_layernorm=ffn_layernorm)
+
     policy: Dict[Type[torch.nn.Module], module_surgery.ReplacementFunction] = {
-        BertSelfAttention:
-            lambda module, idx: BertSelfAttentionPre(module, layer_norm_eps=layer_norm_eps, head_scale=head_scale),
+        BertSelfAttention: from_BertSelfAttention,
+        BertIntermediate: from_BertIntermediate,
         BertSelfOutput:
             lambda module, idx: BertSelfOutputPre(
                 module, layer_norm_eps=layer_norm_eps, attn_output_layernorm=attn_output_layernorm),
-        BertIntermediate:
-            lambda module, idx: BertIntermediatePre(module, layer_norm_eps=layer_norm_eps, ffn_layernorm=ffn_layernorm),
         BertOutput:
             lambda module, idx: BertOutputPre(
                 module, layer_norm_eps=layer_norm_eps, last_layer=bool(idx + 1 == num_hidden_layers)),
