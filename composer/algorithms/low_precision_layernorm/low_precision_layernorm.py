@@ -70,7 +70,8 @@ class LowPrecisionLayerNorm(Algorithm):
 
     @property
     def find_unused_parameters(self) -> bool:
-        return True
+        # return True  # <-- Nikhil's original code
+        return False
 
     def match(self, event: Event, state: State) -> bool:
         del state  # unused
