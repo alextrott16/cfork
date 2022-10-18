@@ -27,8 +27,8 @@ def _cast_if_autocast_enabled(hidden_states):
     if not torch.is_autocast_enabled():
         return hidden_states
     else:
-        # return torch.cuda.amp.autocast_mode._cast(hidden_states, torch.get_autocast_gpu_dtype())  # <-- Nikhil's original code
-        return torch.cuda.amp.autocast_mode._cast(hidden_states, torch.float16)
+        return torch.cuda.amp.autocast_mode._cast(hidden_states, torch.get_autocast_gpu_dtype())  
+        # return torch.cuda.amp.autocast_mode._cast(hidden_states, torch.float16) # <-- Use this instead to hardcode to fp16
 
 
 class CastLayerNorm(torch.nn.LayerNorm):
