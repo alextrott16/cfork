@@ -68,6 +68,13 @@ def apply_low_precision_layernorm(model, optimizers: Union[torch.optim.Optimizer
 
 
 class LowPrecisionLayerNorm(Algorithm):
+    """Replaces torch.nn.LayerNorm instances with an autocast-enabled version.
+
+    Runs on :attr:`.Event.INIT`, so it can perform the necessary model surgery.
+
+    Args:
+        force_fp16 (bool, optional): Whether to force this module to use fp16 precision, default ``False``.
+    """
 
     def __init__(self, force_fp16: bool = False):
         self.force_fp16 = force_fp16
