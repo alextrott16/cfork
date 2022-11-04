@@ -8,10 +8,10 @@ from __future__ import annotations
 import collections.abc
 import operator
 import pathlib
-from enum import IntEnum
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Union
 
+import numpy as np
 import torch
 
 from composer.utils import ensure_tuple
@@ -21,33 +21,7 @@ if TYPE_CHECKING:
     from composer.core.state import State
     from composer.loggers.logger_destination import LoggerDestination
 
-__all__ = ['LoggerDestination', 'Logger', 'LogLevel', 'format_log_data_value']
-
-
-class LogLevel(IntEnum):
-    """LogLevel denotes when in the training loop log messages are generated.
-
-    Logging destinations use the LogLevel to determine whether to record a given
-    metric or state change.
-
-    Attributes:
-        FIT: Logged once per training run.
-        EPOCH: Logged once per epoch.
-        BATCH: Logged once per batch.
-    """
-    FIT = 1
-    EPOCH = 2
-    BATCH = 3
-
-    @classmethod
-    def _missing_(cls, value: object):
-        if isinstance(value, LogLevel):
-            return value
-        if isinstance(value, int):
-            return LogLevel(value)
-        if isinstance(value, str):
-            return LogLevel[value.upper()]
-        return super()._missing_(value)
+__all__ = ['LoggerDestination', 'Logger', 'format_log_data_value']
 
 
 class Logger:
@@ -88,10 +62,33 @@ class Logger:
             destination.log_hyperparameters(parameters)
 
     def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None) -> None:
-        if not step:
+        if step is None:
             step = self._state.timestamp.batch.value
         for destination in self.destinations:
             destination.log_metrics(metrics, step)
+
+    def log_images(self,
+                   images: Union[np.ndarray, torch.Tensor, Sequence[Union[np.ndarray, torch.Tensor]]],
+                   name: str = 'Images',
+                   channels_last: bool = False,
+                   step: Optional[int] = None):
+        """Log images. Logs any tensors or arrays as images.
+
+        Args:
+            images (np.ndarray | torch.Tensor | Sequence[np.ndarray | torch.Tensor]): Dictionary mapping
+                image(s)' names (str) to an image of array of images.
+            name (str): The name of the image(s). (Default: ``'Images'``)
+            channels_last (bool): Whether the channel dimension is first or last.
+                (Default: ``False``)
+            step (int, optional): The current step or batch of training at the
+                time of logging. Defaults to None. If not specified the specific
+                LoggerDestination implementation will choose a step (usually a running
+                counter).
+        """
+        if step is None:
+            step = self._state.timestamp.batch.value
+        for destination in self.destinations:
+            destination.log_images(images, name, channels_last, step)
 
     def data_fit(self, data: Dict[str, Any]) -> None:
         raise NotImplementedError(
@@ -108,51 +105,46 @@ class Logger:
             'data_batch is no longer a valid call to the logger API. Please use log_hyperparameters or log_metrics instead'
         )
 
-    def file_artifact(
+    def upload_file(
         self,
-        log_level: Union[str, int, LogLevel],
-        artifact_name: str,
+        remote_file_name: str,
         file_path: Union[pathlib.Path, str],
         *,
         overwrite: bool = False,
     ):
-        """Log ``file_path`` as an artifact named ``artifact_name``.
+        """Upload ``file_path`` as a file named ``remote_file_name``.
 
-        Both ``file_path`` and ``artifact_name`` can be specified as format strings.
+        Both ``file_path`` and ``remote_file_name`` can be specified as format strings.
         See :func:`~.composer.utils.file_helpers.format_name_with_dist` for more information.
 
-        .. seealso:: :doc:`Artifact Logging</trainer/artifact_logging>` for notes for file artifact logging.
+        .. seealso:: :doc:`Uploading Files</trainer/file_uploading>` for notes for file uploading.
 
         Args:
-            log_level (str | int | LogLevel): The log level, which can be a name, value, or instance of
-                :class:`LogLevel`.
-            artifact_name (str): A format string for the name of the artifact.
+            remote_file_name (str): A format string for the name of the file.
             file_path (str | pathlib.Path): A format string for the file path.
-            overwrite (bool, optional): Whether to overwrite an existing artifact with the same ``artifact_name``.
+            overwrite (bool, optional): Whether to overwrite an existing file with the same ``remote_file_name``.
                 (default: ``False``)
         """
-        log_level = LogLevel(log_level)
         file_path = format_name_with_dist(format_str=str(file_path), run_name=self._state.run_name)
         file_path = pathlib.Path(file_path)
         for destination in self.destinations:
-            destination.log_file_artifact(
+            destination.upload_file(
                 state=self._state,
-                log_level=log_level,
-                artifact_name=format_name_with_dist(format_str=artifact_name, run_name=self._state.run_name),
+                remote_file_name=format_name_with_dist(format_str=remote_file_name, run_name=self._state.run_name),
                 file_path=file_path,
                 overwrite=overwrite,
             )
 
-    def has_file_artifact_destination(self) -> bool:
-        """Determines if the logger has a destination which supports logging file artifacts.
+    def has_file_upload_destination(self) -> bool:
+        """Determines if the logger has a destination which supports uploading files.
 
             Needed for checking if a model can be exported via this logger.
 
         Returns:
-            bool: Whether any of the destinations has supports file artifacts.
+            bool: Whether any of the destinations support uploading files.
         """
         for destination in self.destinations:
-            if destination.can_log_file_artifacts():
+            if destination.can_upload_files():
                 return True
         return False
 

@@ -30,6 +30,7 @@ from composer.algorithms.ghost_batchnorm.ghost_batchnorm import apply_ghost_batc
 from composer.algorithms.gradient_clipping import apply_gradient_clipping
 from composer.algorithms.label_smoothing import smooth_labels
 from composer.algorithms.layer_freezing import freeze_layers
+from composer.algorithms.low_precision_layernorm import apply_low_precision_layernorm
 from composer.algorithms.mixup import mixup_batch
 from composer.algorithms.pre_layernorm import apply_pre_layernorm
 from composer.algorithms.progressive_resizing import resize_batch
@@ -56,6 +57,7 @@ __all__ = [
     'apply_ghost_batchnorm',
     'apply_gradient_clipping',
     'apply_pre_layernorm',
+    'apply_low_precision_layernorm',
     'smooth_labels',
     'freeze_layers',
     'mixup_batch',

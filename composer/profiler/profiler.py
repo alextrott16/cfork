@@ -22,15 +22,6 @@ __all__ = ['Profiler']
 
 log = logging.getLogger(__name__)
 
-try:
-    import yahp
-    del yahp
-except ImportError:
-    profiler_scheduler_registry = {}
-    trace_handler_registry = {}
-else:
-    from composer.profiler.profiler_hparams import profiler_scheduler_registry, trace_handler_registry
-
 
 class Profiler:
     """Composer Profiler.
@@ -81,7 +72,7 @@ class Profiler:
             (default: ``0.5``).
         torch_prof_folder (str, optional): See :class:`~composer.profiler.torch_profiler.TorchProfiler`.
         torch_prof_filename (str, optional): See :class:`~composer.profiler.torch_profiler.TorchProfiler`.
-        torch_prof_artifact_name (str, optional): See :class:`~composer.profiler.torch_profiler.TorchProfiler`.
+        torch_prof_remote_file_name (str, optional): See :class:`~composer.profiler.torch_profiler.TorchProfiler`.
         torch_prof_overwrite (bool, optional): See :class:`~composer.profiler.torch_profiler.TorchProfiler`.
         torch_prof_use_gzip (bool, optional): See :class:`~composer.profiler.torch_profiler.TorchProfiler`.
         torch_prof_record_shapes (bool, optional): See :class:`~composer.profiler.torch_profiler.TorchProfiler`.
@@ -90,11 +81,6 @@ class Profiler:
         torch_prof_with_flops (bool, optional): See :class:`~composer.profiler.torch_profiler.TorchProfiler`.
         torch_prof_num_traces_to_keep (int, optional): See :class:`~composer.profiler.torch_profiler.TorchProfiler`.
     """
-
-    hparams_registry = {
-        'schedule': profiler_scheduler_registry,
-        'trace_handlers': trace_handler_registry,
-    }
 
     def __init__(
         self,
@@ -107,7 +93,7 @@ class Profiler:
         sys_prof_stats_thread_interval_seconds: float = 0.5,
         torch_prof_folder: str = '{run_name}/torch_traces',
         torch_prof_filename: str = 'rank{rank}.{batch}.pt.trace.json',
-        torch_prof_artifact_name: str = '{run_name}/torch_traces/rank{rank}.{batch}.pt.trace.json',
+        torch_prof_remote_file_name: str = '{run_name}/torch_traces/rank{rank}.{batch}.pt.trace.json',
         torch_prof_overwrite: bool = False,
         torch_prof_use_gzip: bool = False,
         torch_prof_record_shapes: bool = False,
@@ -134,7 +120,7 @@ class Profiler:
             self._callbacks.append(
                 TorchProfiler(filename=torch_prof_filename,
                               folder=torch_prof_folder,
-                              artifact_name=torch_prof_artifact_name,
+                              remote_file_name=torch_prof_remote_file_name,
                               num_traces_to_keep=torch_prof_num_traces_to_keep,
                               overwrite=torch_prof_overwrite,
                               record_shapes=torch_prof_record_shapes,

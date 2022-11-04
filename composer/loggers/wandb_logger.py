@@ -12,11 +12,15 @@ import pathlib
 import re
 import sys
 import tempfile
+import textwrap
 import warnings
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Union
+
+import numpy as np
+import torch
 
 from composer.core.state import State
-from composer.loggers.logger import Logger, LogLevel
+from composer.loggers.logger import Logger
 from composer.loggers.logger_destination import LoggerDestination
 from composer.utils import dist
 from composer.utils.import_helpers import MissingConditionalImportError
@@ -101,6 +105,8 @@ class WandBLogger(LoggerDestination):
         self.entity = entity
         self.project = project
 
+        self.run_dir: Optional[str] = None
+
     def _set_is_in_atexit(self):
         self._is_in_atexit = True
 
@@ -118,6 +124,25 @@ class WandBLogger(LoggerDestination):
             metrics_copy = copy.deepcopy(metrics)
             wandb.log(metrics_copy, step)
 
+    def log_images(
+        self,
+        images: Union[np.ndarray, torch.Tensor, Sequence[Union[np.ndarray, torch.Tensor]]],
+        name: str = 'Images',
+        channels_last: bool = False,
+        step: Optional[int] = None,
+    ):
+        if self._enabled:
+            import wandb
+            if not isinstance(images, Sequence) and images.ndim <= 3:
+                images = [images]
+
+            # _convert_to_wandb_image doesn't include wrapping with wandb.Image to future
+            # proof for when we support masks.
+            wandb_images = (_convert_to_wandb_image(image, channels_last) for image in images)
+            wandb_images = [wandb.Image(image) for image in wandb_images]
+
+            wandb.log({name: wandb_images}, step=step)
+
     def state_dict(self) -> Dict[str, Any]:
         import wandb
 
@@ -125,13 +150,19 @@ class WandBLogger(LoggerDestination):
         if self._enabled:
             if wandb.run is None:
                 raise ValueError('wandb module must be initialized before serialization.')
-            return {
-                'name': wandb.run.name,
-                'project': wandb.run.project,
-                'entity': wandb.run.entity,
-                'id': wandb.run.id,
-                'group': wandb.run.group
-            }
+
+            # If WandB is disabled, most things are RunDisabled objects, which are not
+            # pickleable due to overriding __getstate__ but not __setstate__
+            if wandb.run.disabled:
+                return {}
+            else:
+                return {
+                    'name': wandb.run.name,
+                    'project': wandb.run.project,
+                    'entity': wandb.run.entity,
+                    'id': wandb.run.id,
+                    'group': wandb.run.group
+                }
         else:
             return {}
 
@@ -152,6 +183,7 @@ class WandBLogger(LoggerDestination):
             wandb.init(**self._init_kwargs)
             assert wandb.run is not None, 'The wandb run is set after init'
             entity_and_project = [str(wandb.run.entity), str(wandb.run.project)]
+            self.run_dir = wandb.run.dir
             atexit.register(self._set_is_in_atexit)
         else:
             entity_and_project = [None, None]
@@ -161,9 +193,8 @@ class WandBLogger(LoggerDestination):
         assert self.entity is not None, 'entity should be defined'
         assert self.project is not None, 'project should be defined'
 
-    def log_file_artifact(self, state: State, log_level: LogLevel, artifact_name: str, file_path: pathlib.Path, *,
-                          overwrite: bool):
-        del log_level, overwrite  # unused
+    def upload_file(self, state: State, remote_file_name: str, file_path: pathlib.Path, *, overwrite: bool):
+        del overwrite  # unused
 
         if self._enabled and self._log_artifacts:
             import wandb
@@ -174,12 +205,12 @@ class WandBLogger(LoggerDestination):
 
             # replace all unsupported characters with periods
             # Only alpha-numeric, periods, hyphens, and underscores are supported by wandb.
-            new_artifact_name = re.sub(r'[^a-zA-Z0-9-_\.]', '.', artifact_name)
-            if new_artifact_name != artifact_name:
-                warnings.warn(('WandB permits only alpha-numeric, periods, hyphens, and underscores in artifact names. '
-                               f"The artifact with name '{artifact_name}' will be stored as '{new_artifact_name}'."))
+            new_remote_file_name = re.sub(r'[^a-zA-Z0-9-_\.]', '.', remote_file_name)
+            if new_remote_file_name != remote_file_name:
+                warnings.warn(('WandB permits only alpha-numeric, periods, hyphens, and underscores in file names. '
+                               f"The file with name '{remote_file_name}' will be stored as '{new_remote_file_name}'."))
 
-            extension = new_artifact_name.split('.')[-1]
+            extension = new_remote_file_name.split('.')[-1]
 
             metadata = {f'timestamp/{k}': v for (k, v) in state.timestamp.state_dict().items()}
             # if evaluating, also log the evaluation timestamp
@@ -188,21 +219,21 @@ class WandBLogger(LoggerDestination):
                 # the trainer is evaluating or predicting. Assuming evaluation in this case.
                 metadata.update({f'eval_timestamp/{k}': v for (k, v) in state.eval_timestamp.state_dict().items()})
 
-            artifact = wandb.Artifact(
-                name=new_artifact_name,
+            wandb_artifact = wandb.Artifact(
+                name=new_remote_file_name,
                 type=extension,
                 metadata=metadata,
             )
-            artifact.add_file(os.path.abspath(file_path))
-            wandb.log_artifact(artifact, aliases=aliases)
+            wandb_artifact.add_file(os.path.abspath(file_path))
+            wandb.log_artifact(wandb_artifact, aliases=aliases)
 
-    def can_log_file_artifacts(self) -> bool:
-        """Whether the logger supports logging file artifacts."""
+    def can_upload_files(self) -> bool:
+        """Whether the logger supports uploading files."""
         return True
 
-    def get_file_artifact(
+    def download_file(
         self,
-        artifact_name: str,
+        remote_file_name: str,
         destination: str,
         overwrite: bool = False,
         progress_bar: bool = True,
@@ -220,34 +251,35 @@ class WandBLogger(LoggerDestination):
 
         # replace all unsupported characters with periods
         # Only alpha-numeric, periods, hyphens, and underscores are supported by wandb.
-        if ':' not in artifact_name:
-            artifact_name += ':latest'
+        if ':' not in remote_file_name:
+            remote_file_name += ':latest'
 
-        new_artifact_name = re.sub(r'[^a-zA-Z0-9-_\.:]', '.', artifact_name)
-        if new_artifact_name != artifact_name:
-            warnings.warn(('WandB permits only alpha-numeric, periods, hyphens, and underscores in artifact names. '
-                           f"The artifact with name '{artifact_name}' will be stored as '{new_artifact_name}'."))
+        new_remote_file_name = re.sub(r'[^a-zA-Z0-9-_\.:]', '.', remote_file_name)
+        if new_remote_file_name != remote_file_name:
+            warnings.warn(('WandB permits only alpha-numeric, periods, hyphens, and underscores in file names. '
+                           f"The file with name '{remote_file_name}' will be stored as '{new_remote_file_name}'."))
 
         try:
-            artifact = api.artifact('/'.join([self.entity, self.project, new_artifact_name]))
+            wandb_artifact = api.artifact('/'.join([self.entity, self.project, new_remote_file_name]))
         except wandb.errors.CommError as e:
             if 'does not contain artifact' in str(e):
-                raise FileNotFoundError(f'Artifact {new_artifact_name} not found') from e
+                raise FileNotFoundError(f'WandB Artifact {new_remote_file_name} not found') from e
             raise e
         with tempfile.TemporaryDirectory() as tmpdir:
-            artifact_folder = os.path.join(tmpdir, 'artifact_folder')
-            artifact.download(root=artifact_folder)
-            artifact_names = os.listdir(artifact_folder)
+            wandb_artifact_folder = os.path.join(tmpdir, 'wandb_artifact_folder')
+            wandb_artifact.download(root=wandb_artifact_folder)
+            wandb_artifact_names = os.listdir(wandb_artifact_folder)
             # We only log one file per artifact
-            if len(artifact_names) > 1:
+            if len(wandb_artifact_names) > 1:
                 raise RuntimeError(
-                    'Found more than one file in artifact. We assume the checkpoint is the only file in the artifact.')
-            artifact_name = artifact_names[0]
-            artifact_path = os.path.join(artifact_folder, artifact_name)
+                    'Found more than one file in WandB artifact. We assume the checkpoint is the only file in the WandB artifact.'
+                )
+            wandb_artifact_name = wandb_artifact_names[0]
+            wandb_artifact_path = os.path.join(wandb_artifact_folder, wandb_artifact_name)
             if overwrite:
-                os.replace(artifact_path, destination)
+                os.replace(wandb_artifact_path, destination)
             else:
-                os.rename(artifact_path, destination)
+                os.rename(wandb_artifact_path, destination)
 
     def post_close(self) -> None:
         import wandb
@@ -267,3 +299,39 @@ class WandBLogger(LoggerDestination):
         else:
             # record there was an error
             wandb.finish(1)
+
+
+def _convert_to_wandb_image(image: Union[np.ndarray, torch.Tensor], channels_last: bool):
+    if isinstance(image, torch.Tensor):
+        image = image.data.cpu().numpy()
+
+    # Error out for empty arrays or weird arrays of dimension 0.
+    if np.any(np.equal(image.shape, 0)):
+        raise ValueError(f'Got an image (shape {image.shape}) with at least one dimension being 0! ')
+
+    # Squeeze any singleton dimensions and then add them back in if image dimension
+    # less than 3.
+    image = image.squeeze()
+
+    # Add in length-one dimensions to get back up to 3
+    # putting channels last.
+    if image.ndim == 1:
+        image = np.expand_dims(image, (1, 2))
+        channels_last = True
+    if image.ndim == 2:
+        image = np.expand_dims(image, 2)
+        channels_last = True
+
+    if image.ndim != 3:
+        raise ValueError(
+            textwrap.dedent(f'''Input image must be 3 dimensions, but instead
+                            got {image.ndim} dims at shape: {image.shape}
+                            Your input image was interpreted as a batch of {image.ndim}
+                            -dimensional images because you either specified a
+                            {image.ndim + 1}D image or a list of {image.ndim}D images.
+                            Please specify either a 4D image of a list of 3D images'''))
+
+    if not channels_last:
+        assert isinstance(image, np.ndarray)
+        image = image.transpose(1, 2, 0)
+    return image
