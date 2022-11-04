@@ -107,7 +107,7 @@ def sort_pre_layernorm_after_gated_linear_units(algorithms: Sequence[Algorithm],
     This ensures that surgery for both PreLayerNorm and GatedLinearUnits are correct and complete.
 
     """
-    from composer.algorithms import PreLayerNorm, GatedLinearUnits
+    from composer.algorithms import GatedLinearUnits, PreLayerNorm
     pre_ln_idx = None
     algorithms = list(algorithms)
     for idx in range(len(algorithms)):
@@ -119,10 +119,10 @@ def sort_pre_layernorm_after_gated_linear_units(algorithms: Sequence[Algorithm],
                 # Remove the PreLayerNorm algorithm and place it back after the GatedLinearUnits algorithm
                 pre_ln_algo = algorithms.pop(pre_ln_idx)
                 algorithms.insert(idx, pre_ln_algo)
-                break # This should only happen once
+                break  # This should only happen once
     return algorithms
 
-    
+
 def sort_low_precision_layernorm_last(algorithms: Sequence[Algorithm],
                                       event: Event) -> Sequence[Algorithm]:  #noqa: D403
     """LowPrecisionLayerNorm should run after other algorithms that add LayerNorms (e.g. GatedLinearUnits).
