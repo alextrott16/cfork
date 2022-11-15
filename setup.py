@@ -162,7 +162,7 @@ extra_deps['vit'] = [
 ]
 
 extra_deps['timm'] = [
-    'timm>=0.5.4,<0.6',
+    'timm>=0.5.4,<0.7',
 ]
 
 extra_deps['coco'] = [
